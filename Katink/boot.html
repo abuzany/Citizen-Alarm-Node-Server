@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Citizen Alarm Monitor</title>
+      <script src="https://cdn.socket.io/socket.io-1.2.0.js"></script>
+      <script src="http://code.jquery.com/jquery-1.11.1.js"></script>
+      <script>
+          var socket = io();
+
+          var _latitude;
+          var _longitude;
+
+          $(document).ready(function () {
+          });
+
+          function Join() {
+
+              navigator.geolocation.getCurrentPosition(GetLocation);
+
+          }
+
+          function Alert(alertTypeId) {
+
+              var data = { alertTypeId: alertTypeId, latitude: _latitude, longitude: _longitude};
+
+              socket.emit('onAlert', data);
+          }
+
+          function GetLocation(location) {
+
+              _latitude = location.coords.latitude;
+              _longitude = location.coords.longitude;
+
+              var data = {
+                  userId: '000000000', latitude: location.coords.latitude, longitude: location.coords.longitude
+              };
+
+              socket.emit('onJoin', data);
+          }
+      </script>
+  </head>
+  <body>
+      <button onclick="Join()">Join</button>
+      <br />
+      <button onclick="Alert(1)">Kidnap</button>
+      <br />
+      <button onclick="Alert(2)">Robber</button>
+      <br />
+      <button onclick="Alert(3)">Accident</button>
+      <br />
+  </body>
+</html>
