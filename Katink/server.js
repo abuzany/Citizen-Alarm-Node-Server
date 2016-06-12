@@ -12,106 +12,152 @@ app.get('/boot', function (req, res) {
 });
 
 io.on('connection', function(socket){
-  console.log('connected: ' + socket.id);
+  loggerD('connected: ' + socket.id);
 
   /////////////////////////////////////////////Listeners////////////////////////////////////////////
   
   socket.on('onSignIn', function(data){
-      console.log('onSignIn: ' + data.userId);
-      console.log(data.userId + ' latitude: ' + data.latitude);
-      console.log(data.userId + ' longitude: ' + data.longitude);
-      
-      var isSingedIn = false;
-      
-      //Verify that the user in not singedin already
-      for (var i = 0; i < clients.length; i++) {
-          var client = clients[i];
-          if (client.userId == data.userId) {
-              console.log("=)");
-              isSingedIn = true;
-          }
-      }
-      
-      var status = true;
-      
-      if(!isSingedIn){
-        //Create client objects
-        var client ={
-            userId:data.userId,
-            socketId:socket.id,
-            latitude:data.latitude,
-            longitude:data.longitude
-        };
+      loggerD('onSignIn: ' + data.userId);
+      loggerD(data.userId + ' latitude: ' + data.latitude);
+      loggerD(data.userId + ' longitude: ' + data.longitude);
+      loggerD(data.userId + ' role: ' + data.roleId);
 
-        //Add client to client's list
-        clients.push(client);
+      if(data.roleId == 1){ //Monitor        
+        //Verify if monitor in not singedin already
+        var bertholdMon = findClientByUserId(data.userId);
+
+        if(bertholdMon ==  null){
+          //Create client objects
+          bertholdMon ={
+              userId:data.userId,
+              socketId:socket.id,
+              latitude:data.latitude,
+              longitude:data.longitude
+          };
+
+          //Add client to client's list
+          clients.push(bertholdMon);
+
+          //Notify to Monitor
+          io.sockets.connected[bertholdMon.socketId].emit('onSignIn', bertholdMon);
+        }
+        else{
+            loggerI('Berthold is signed in already');
+        }
       }
-      else{
-          
-      }
- 
-      var result ={
-         status:status,
-         msg: "succesfull"  
-      };
-      
-      io.sockets.connected[socket.id].emit('onSignedIn', result);
+      else if(data.roleId == 2 ){ //Agent
+        //Verify if the agent in not singedin already
+        var client = findClientByUserId(data.userId);
+
+        if(client == null){
+          //Create client objects
+          client ={
+              userId:data.userId,
+              socketId:socket.id,
+              latitude:data.latitude,
+              longitude:data.longitude
+          };
+
+          //Add client to client's list
+          clients.push(client);
+
+          var bertholdMon = findClientByUserId('200910586');
+
+          if(bertholdMon != null){
+            //Notify to Monitor a user has singned in
+            io.sockets.connected[bertholdMon.socketId].emit('onSignIn', client);
+          }
+          else{
+            loggerI('Berthold is not connected');
+          }
+        }
+        else{
+            loggerI(data.userId + ' user is singedin already');
+        }
+      } 
   });
   
     socket.on('onIsUserSignedIn', function(userId){
-      console.log('onIsUserSignedIn: ' + userId);
+      loggerD('onIsUserSignedIn: ' + userId);
+
+      var client = findClientByUserId(userId);
       
-      var result = false;
-      
-      for (var i = 0; i < clients.length; i++) {
-          var client = clients[i];
-          if (client.userId == userId) {
-              result = true;
-          }
+      if(client == null){
+        loggerI(userId + ' user is not signed in');
       }
-      
-      io.emit('onIsUserSignedIn', result);
+      else {
+        loggerI(userId + ' user is signed in already');
+        io.sockets.connected[client.socketId].emit('onIsUserSignedIn', true);
+      }
   });
 
   socket.on('onAlert', function(data){
-      console.log("onAlert");
-      console.log('socketId: ' + socket.id);
-      console.log('alertTypeId: ' + data.alertTypeId);
-      console.log('latitude: ' + data.latitude);
-      console.log('longitude: ' + data.longitude);
-
+      loggerD('onAlert: ' + data.userId);
+      loggerD(data.userId + ' alertTypeId: ' + data.alertTypeId);
+      loggerD(data.userId + ' latitude: ' + data.latitude);
+      loggerD(data.userId + ' longitude: ' + data.longitude);
       //Send alert to clients arround 1 km
       for (var i = 0; i< clients.length; i++) { 
         var client = clients[i];
         var dsitance = distanceBetweenTwoPoints(data.latitude, data.longitude, client.latitude, client.longitude);
-
         //Verify if client is arround 1 km
         if (dsitance <= 1) {
-            console.log('send'+client.userId);
+            loggerD('Notify alert to '+ client.userId);
             io.sockets.connected[client.socketId].emit('onAlert', data);
         }
       }
+
+      //Issue to berthold
+      var bertholdMon = findClientByUserId('200910586');
+
+      if(bertholdMon != null)
+          io.sockets.connected[bertholdMon.socketId].emit('onAlert', data);
   });
 
-  socket.on('onGetUsersConnected', function (data) {
-      console.log("onGetUsersConnected");
+  socket.on('onGetUsersConnected', function () {
+      loggerD("onGetUsersConnected");
+
+      var bertholdMon = findClientByUserId('200910586');
+
+      if(bertholdMon != null){
+          io.sockets.connected[bertholdMon.socketId].emit('onGetUsersConnected', clients);
+      }
+      else {
+          loggerI('Berthold is not connected');
+      }
   });
 
   socket.on('disconnect', function(){
-      console.log('client disconnected');
-      //Optimize search
-      for (var i = 0; i < clients.length; i++) {
-          var client = clients[i];
-          if (client.socketId == socket.id) {
-              console.log('onSingOut: ' + client.userId);
-              io.emit('onSingOut', client.userId);
-          }
+      loggerD('client disconnected');
+      var bertholdMon = findClientByUserId('200910586');
+
+      if(bertholdMon != null){
+        var client = findClientBySocketId(socket.id);
+
+        loggerI('SignOut '+ client.userId);
+
+        // Don't notify if the user that has dissconectd is berthold,
+        // because by the moment that try out notifiying the socket is
+        // disconnected already
+        if(client.userId != '200910586'){
+             //Issue to monitor that a user has signed out
+            io.sockets.connected[bertholdMon.socketId].emit('onSingOut', client.userId);
+        }
+
+        deleteClientBySocketId(socket.id);
+      }
+      else{
+        loggerI('Berthold is not connected');
       }
   });
 });
 
 http.listen(3000, function(){
-  console.log('listening on *:3000');
+  loggerD('listening on *:3000');
+
+  //Clean the clients array
+  clients = null;
+  clients = [];
 });
 
 //////////////////////////////////////Methods/////////////////////////////////////////////////
@@ -128,4 +174,43 @@ function distanceBetweenTwoPoints(lat1, lon1, lat2, lon2) {
     var d = R * c; 
 
     return d;
+}
+
+function findClientByUserId(userId){
+    for (var i = 0; i < clients.length; i++) {
+      var c = clients[i];
+      if (c.userId == userId) {
+         return c;
+      }
+    }
+}
+
+function findClientBySocketId(socketId){
+    for (var i = 0; i < clients.length; i++) {
+      var c = clients[i];
+      if (c.socketId == socketId) {
+         return c;
+      }
+    }
+}
+
+function deleteClientBySocketId(socketId){
+    for (var i = 0; i < clients.length; i++) {
+      var c = clients[i];
+      if (c.socketId == socketId) {
+        clients.splice(i, 1);
+      }
+    }
+}
+
+function loggerD(msg){
+  console.log(new Date().toLocaleString() + ' ' + 'DEBUG->' + msg);
+}
+
+function loggerI(msg){
+  console.log(new Date().toLocaleString() + ' ' + 'INFO->' + msg);
+}
+
+function loggerE(msg){
+  console.log(new Date().toLocaleString() + ' ' + 'ERROR->' + msg);
 }
