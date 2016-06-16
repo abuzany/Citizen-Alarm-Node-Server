@@ -24,11 +24,11 @@ io.on('connection', function(socket){
 
       if(data.roleId == 1){ //Monitor        
         //Verify if monitor in not singedin already
-        var bertholdMon = findClientByUserId(data.userId);
+        var berthold = findClientByUserId(data.userId);
 
-        if(bertholdMon ==  null){
-          //Create client objects
-          bertholdMon ={
+        if(berthold ==  null){
+          //berthold agent object
+          berthold ={
               userId:data.userId,
               socketId:socket.id,
               latitude:data.latitude,
@@ -36,10 +36,10 @@ io.on('connection', function(socket){
           };
 
           //Add client to client's list
-          clients.push(bertholdMon);
+          clients.push(berthold);
 
           //Notify to Monitor
-          io.sockets.connected[bertholdMon.socketId].emit('onSignIn', bertholdMon);
+          io.sockets.connected[berthold.socketId].emit('onBertholdSignedIn', berthold);
         }
         else{
             loggerI('Berthold is signed in already');
@@ -47,11 +47,11 @@ io.on('connection', function(socket){
       }
       else if(data.roleId == 2 ){ //Agent
         //Verify if the agent in not singedin already
-        var client = findClientByUserId(data.userId);
+        var agent = findClientByUserId(data.userId);
 
-        if(client == null){
-          //Create client objects
-          client ={
+        if(agent == null){
+          //Create agent objec
+          agent ={
               userId:data.userId,
               socketId:socket.id,
               latitude:data.latitude,
@@ -59,13 +59,15 @@ io.on('connection', function(socket){
           };
 
           //Add client to client's list
-          clients.push(client);
+          clients.push(agent);
 
-          var bertholdMon = findClientByUserId('200910586');
+          var berthold = findClientByUserId('200910586');
 
-          if(bertholdMon != null){
+          if(berthold != null){
             //Notify to Monitor a user has singned in
-            io.sockets.connected[bertholdMon.socketId].emit('onSignIn', client);
+            io.sockets.connected[berthold.socketId].emit('onAgentSignedIn', agent);
+            //Notify to Agent the login status
+            io.sockets.connected[agent.socketId].emit('onSignedIn', 200);
           }
           else{
             loggerI('Berthold is not connected');
@@ -77,41 +79,48 @@ io.on('connection', function(socket){
       } 
   });
   
-    socket.on('onIsUserSignedIn', function(userId){
-      loggerD('onIsUserSignedIn: ' + userId);
+  socket.on('onIsUserSignedIn', function(userId){
+    loggerD('onIsUserSignedIn: ' + userId);
 
-      var client = findClientByUserId(userId);
+    var agent = findClientByUserId(userId);
+    
+    if(agent == null){
+      loggerI(userId + ' user is not signed in');
+    }
+    else {
+      loggerI(userId + ' user is signed in already');
+      io.sockets.connected[agent.socketId].emit('onIsUserSignedIn', true);
+    }
+});
+
+  socket.on('onAlert', function(alert){    
+      loggerD('onAlert: ' + alert.userId);
+      loggerD(alert.userId + ' alertTypeId: ' + alert.alertTypeId);
+      loggerD(alert.userId + ' latitude: ' + alert.latitude);
+      loggerD(alert.userId + ' longitude: ' + alert.longitude);
       
-      if(client == null){
-        loggerI(userId + ' user is not signed in');
-      }
-      else {
-        loggerI(userId + ' user is signed in already');
-        io.sockets.connected[client.socketId].emit('onIsUserSignedIn', true);
-      }
-  });
-
-  socket.on('onAlert', function(data){
-      loggerD('onAlert: ' + data.userId);
-      loggerD(data.userId + ' alertTypeId: ' + data.alertTypeId);
-      loggerD(data.userId + ' latitude: ' + data.latitude);
-      loggerD(data.userId + ' longitude: ' + data.longitude);
+      loggerI('Notifying to agents arround 1 km');      
       //Send alert to clients arround 1 km
       for (var i = 0; i< clients.length; i++) { 
-        var client = clients[i];
-        var dsitance = distanceBetweenTwoPoints(data.latitude, data.longitude, client.latitude, client.longitude);
-        //Verify if client is arround 1 km
-        if (dsitance <= 1) {
-            loggerD('Notify alert to '+ client.userId);
-            io.sockets.connected[client.socketId].emit('onAlert', data);
+        var agent = clients[i];
+        var dsitance = distanceBetweenTwoPoints(alert.latitude, alert.longitude, agent.latitude, agent.longitude);
+        //Verify if agent is arround 1 km, is not the same agent which emitted the alert and It's not Berthold
+        if ((dsitance) <= 1 && (agent.userId != alert.userId && (agent.userId != '200910586'))) {
+            loggerD('Notifying alert to '+ agent.userId);
+            io.sockets.connected[agent.socketId].emit('onAlert', alert);
         }
       }
 
-      //Issue to berthold
+      loggerI('Notifying the alert to Berthold');
+
       var bertholdMon = findClientByUserId('200910586');
 
-      if(bertholdMon != null)
-          io.sockets.connected[bertholdMon.socketId].emit('onAlert', data);
+      if(bertholdMon != null){
+          io.sockets.connected[bertholdMon.socketId].emit('onAlert', alert);
+      }
+      else{
+        loggerI('Berthold is not connected');
+      }
   });
 
   socket.on('onGetUsersConnected', function () {
@@ -119,23 +128,20 @@ io.on('connection', function(socket){
 
       var bertholdMon = findClientByUserId('200910586');
 
-      if(bertholdMon != null){
+      if(bertholdMon != null)
           io.sockets.connected[bertholdMon.socketId].emit('onGetUsersConnected', clients);
-      }
-      else {
-          loggerI('Berthold is not connected');
-      }
+      else
+        loggerI('Berthold is not connected');
   });
 
   socket.on('disconnect', function(){
       loggerD('client disconnected');
+
       var bertholdMon = findClientByUserId('200910586');
 
       if(bertholdMon != null){
         var client = findClientBySocketId(socket.id);
-
         loggerI('SignOut '+ client.userId);
-
         // Don't notify if the user that has dissconectd is berthold,
         // because by the moment that try out notifiying the socket is
         // disconnected already
@@ -143,12 +149,11 @@ io.on('connection', function(socket){
              //Issue to monitor that a user has signed out
             io.sockets.connected[bertholdMon.socketId].emit('onSingOut', client.userId);
         }
-
-        deleteClientBySocketId(socket.id);
       }
-      else{
+      else
         loggerI('Berthold is not connected');
-      }
+
+      deleteClientBySocketId(socket.id);          
   });
 });
 
