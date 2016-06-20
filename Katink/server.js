@@ -15,7 +15,6 @@ io.on('connection', function(socket){
   loggerD('connected: ' + socket.id);
 
   /////////////////////////////////////////////Listeners////////////////////////////////////////////
-  
   socket.on('onSignIn', function(data){
       loggerD('onSignIn: ' + data.userId);
       loggerD(data.userId + ' latitude: ' + data.latitude);
@@ -66,8 +65,10 @@ io.on('connection', function(socket){
           if(berthold != null){
             //Notify to Monitor a user has singned in
             io.sockets.connected[berthold.socketId].emit('onAgentSignedIn', agent);
+
+            var response = { status:200, msg:"succeess"};
             //Notify to Agent the login status
-            io.sockets.connected[agent.socketId].emit('onSignedIn', 200);
+            io.sockets.connected[agent.socketId].emit('onSignedIn', response);
           }
           else{
             loggerI('Berthold is not connected');
@@ -83,77 +84,79 @@ io.on('connection', function(socket){
     loggerD('onIsUserSignedIn: ' + userId);
 
     var agent = findClientByUserId(userId);
-    
+
     if(agent == null){
       loggerI(userId + ' user is not signed in');
+      io.sockets.connected[socket.id].emit('onIsUserSignedIn', false);
     }
     else {
       loggerI(userId + ' user is signed in already');
       io.sockets.connected[agent.socketId].emit('onIsUserSignedIn', true);
     }
-});
+  });
 
   socket.on('onAlert', function(alert){    
-      loggerD('onAlert: ' + alert.userId);
-      loggerD(alert.userId + ' alertTypeId: ' + alert.alertTypeId);
-      loggerD(alert.userId + ' latitude: ' + alert.latitude);
-      loggerD(alert.userId + ' longitude: ' + alert.longitude);
-      
-      loggerI('Notifying to agents arround 1 km');      
-      //Send alert to clients arround 1 km
-      for (var i = 0; i< clients.length; i++) { 
-        var agent = clients[i];
-        var dsitance = distanceBetweenTwoPoints(alert.latitude, alert.longitude, agent.latitude, agent.longitude);
-        //Verify if agent is arround 1 km, is not the same agent which emitted the alert and It's not Berthold
-        if ((dsitance) <= 1 && (agent.userId != alert.userId && (agent.userId != '200910586'))) {
-            loggerD('Notifying alert to '+ agent.userId);
-            io.sockets.connected[agent.socketId].emit('onAlert', alert);
-        }
+    loggerD('onAlert: ' + alert.userId);
+    loggerD(alert.userId + ' alertTypeId: ' + alert.alertTypeId);
+    loggerD(alert.userId + ' latitude: ' + alert.latitude);
+    loggerD(alert.userId + ' longitude: ' + alert.longitude);
+    
+    loggerI('Notifying to agents arround 1 km');      
+    //Send alert to clients arround 1 km
+    for (var i = 0; i< clients.length; i++) { 
+      var agent = clients[i];
+      var dsitance = distanceBetweenTwoPoints(alert.latitude, alert.longitude, agent.latitude, agent.longitude);
+      loggerD("Distance "+dsitance);
+      //Verify if agent is arround 1 km, is not the same agent which emitted the alert and It's not Berthold
+      if ((dsitance <= 1) && (agent.userId != alert.userId) && (agent.userId != '200910586')) {
+          loggerD('Notifying alert to '+ agent.userId);
+          io.sockets.connected[agent.socketId].emit('onAlert', alert);
       }
+    }
 
-      loggerI('Notifying the alert to Berthold');
+    loggerI('Notifying the alert to Berthold');
 
-      var bertholdMon = findClientByUserId('200910586');
+    var bertholdMon = findClientByUserId('200910586');
 
-      if(bertholdMon != null){
-          io.sockets.connected[bertholdMon.socketId].emit('onAlert', alert);
-      }
-      else{
-        loggerI('Berthold is not connected');
-      }
+    if(bertholdMon != null){
+        io.sockets.connected[bertholdMon.socketId].emit('onAlert', alert);
+    }
+    else{
+      loggerI('Berthold is not connected');
+    }
   });
 
   socket.on('onGetUsersConnected', function () {
-      loggerD("onGetUsersConnected");
+    loggerD("onGetUsersConnected");
 
-      var bertholdMon = findClientByUserId('200910586');
+    var bertholdMon = findClientByUserId('200910586');
 
-      if(bertholdMon != null)
-          io.sockets.connected[bertholdMon.socketId].emit('onGetUsersConnected', clients);
-      else
-        loggerI('Berthold is not connected');
+    if(bertholdMon != null)
+        io.sockets.connected[bertholdMon.socketId].emit('onGetUsersConnected', clients);
+    else
+      loggerI('Berthold is not connected');
   });
 
   socket.on('disconnect', function(){
-      loggerD('client disconnected');
+    loggerD('client disconnected');
 
-      var bertholdMon = findClientByUserId('200910586');
+    var bertholdMon = findClientByUserId('200910586');
 
-      if(bertholdMon != null){
-        var client = findClientBySocketId(socket.id);
-        loggerI('SignOut '+ client.userId);
-        // Don't notify if the user that has dissconectd is berthold,
-        // because by the moment that try out notifiying the socket is
-        // disconnected already
-        if(client.userId != '200910586'){
-             //Issue to monitor that a user has signed out
-            io.sockets.connected[bertholdMon.socketId].emit('onSingOut', client.userId);
-        }
+    if(bertholdMon != null){
+      var client = findClientBySocketId(socket.id);
+      loggerI('SignOut '+ client.userId);
+      // Don't notify if the user that has dissconectd is berthold,
+      // because by the moment that try out notifiying the socket is
+      // disconnected already
+      if(client.userId != '200910586'){
+            //Issue to monitor that a user has signed out
+          io.sockets.connected[bertholdMon.socketId].emit('onSingOut', client.userId);
       }
-      else
-        loggerI('Berthold is not connected');
+    }
+    else
+      loggerI('Berthold is not connected');
 
-      deleteClientBySocketId(socket.id);          
+    deleteClientBySocketId(socket.id);          
   });
 });
 
@@ -166,7 +169,6 @@ http.listen(3000, function(){
 });
 
 //////////////////////////////////////Methods/////////////////////////////////////////////////
-
 function distanceBetweenTwoPoints(lat1, lon1, lat2, lon2) {
     //R = earth's radius (mean radius = 6,371km)  
     var R = 6371;
