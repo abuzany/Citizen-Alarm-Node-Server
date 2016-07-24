@@ -100,7 +100,7 @@ io.on('connection', function(socket){
     loggerD(alert.userId + ' alertTypeId: ' + alert.alertTypeId);
     loggerD(alert.userId + ' latitude: ' + alert.latitude);
     loggerD(alert.userId + ' longitude: ' + alert.longitude);
-    
+    debugger;
     loggerI('Notifying to agents arround 1 km');      
     //Send alert to clients arround 1 km
     for (var i = 0; i< clients.length; i++) { 
@@ -108,7 +108,7 @@ io.on('connection', function(socket){
       var dsitance = distanceBetweenTwoPoints(alert.latitude, alert.longitude, agent.latitude, agent.longitude);
       loggerD("Distance "+dsitance);
       //Verify if agent is arround 1 km, is not the same agent which emitted the alert and It's not Berthold
-      if ((dsitance <= 1) && (agent.userId != alert.userId) && (agent.userId != '200910586')) {
+      if ((dsitance <= agent.range) && (agent.userId != alert.userId) && (agent.userId != '200910586') && (agent.isEnabledNotifications==true)) {
           loggerD('Notifying alert to '+ agent.userId);
           io.sockets.connected[agent.socketId].emit('onAlert', alert);
       }
@@ -135,6 +135,44 @@ io.on('connection', function(socket){
         io.sockets.connected[bertholdMon.socketId].emit('onGetUsersConnected', clients);
     else
       loggerI('Berthold is not connected');
+  });
+
+  socket.on('onAgentTracking', function(data){
+    loggerD('onAgentTracking');
+    loggerI(data.userId + ' latitude:' + data.latitude);
+    loggerI(data.userId + ' longitude:' + data.longitude);
+
+    var agent = findClientByUserId(data.userId);
+
+    if(agent != null){
+      loggerI("Updating agent location");
+      agent.latitude = data.latitude;
+      agent.longitude = data.longitude;
+
+      updateAgent(agent);
+    }
+    else{
+      loggerI("Agent doesn't exist or is not connected");
+    }
+  });
+
+  socket.on('onUpdateUserConfiguration', function(data){
+    loggerD('onUpdateUserConfiguration');
+    loggerI(data.userId + ' isEnabledNotifications:' + data.isEnabledNotifications);
+    loggerI(data.userId + ' range:' + data.range);
+
+    var agent = findClientByUserId(data.userId);
+
+    if(agent != null){
+      loggerI("Updating user configuration");
+      agent.isEnabledNotifications = data.latitude;
+      agent.range = data.range;
+
+      updateAgent(agent);
+    }
+    else{
+      loggerI("Agent doesn't exist or is not connected");
+    }
   });
 
   socket.on('disconnect', function(){
@@ -206,6 +244,15 @@ function deleteClientBySocketId(socketId){
       var c = clients[i];
       if (c.socketId == socketId) {
         clients.splice(i, 1);
+      }
+    }
+}
+
+function updateAgent(agent){
+    for (var i = 0; i < clients.length; i++) {
+      var c = clients[i];
+      if (c == agent) {
+        clients[i] = agent;
       }
     }
 }
